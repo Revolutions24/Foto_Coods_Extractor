@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KML Coordinate Extractor By Revo v2024</title>
+    <style>
+        body {
+            font-family: 'Courier', monospace;
+            background-color: #F0F0F0;
+            color: #000;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background-color: #FFFFFF;
+            border-radius: 10px;
+            padding: 20px;
+            width: 500px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        h1 {
+            text-align: center;
+            font-weight: bold;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            background-color: #ffffff;
+            color: #000000;
+            border: 1px solid #ccc;
+            font-family: 'Courier', monospace;
+            font-size: 14px;
+        }
+        label {
+            font-weight: bold;
+        }
+        select, button, input[type="file"] {
+            width: 100%;
+            margin: 10px 0;
+            padding: 10px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            font-weight: bold;
+            border: none;
+        }
+        button.save {
+            background-color: #4CAF50;
+        }
+        button.copy {
+            background-color: #FF9800;
+        }
+        button.open {
+            background-color: #2196F3;
+        }
+        button.clear {
+            background-color: #f44336;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.6.0/proj4.js"></script>
+</head>
+<body>
+
+<div class="container">
+    <h1>KML Coordinate Extractor 2024 By Revo</h1>
+
+    <label for="coord-type">Coordinates Type:</label>
+    <select id="coord-type" onchange="updateCoordinates()">
+        <option value="Geographic">Geographic</option>
+        <option value="UTM">UTM</option>
+    </select>
+
+    <label for="zone" id="zone-label" style="display:none;">UTM Zone:</label>
+    <select id="zone" style="display:none;">
+        <option value="17S">17S</option>
+        <option value="18S">18S</option>
+        <option value="19S">19S</option>
+    </select>
+
+    <label for="save-format">Save Format:</label>
+    <select id="save-format">
+        <option value="csv">Comma Separated (CSV)</option>
+        <option value="tab">Tab Separated</option>
+        <option value="space">Space Separated</option>
+    </select>
+
+    <textarea id="coordinate-output" placeholder="Coordinates will appear here..."></textarea>
+
+    <input type="file" id="file-input" accept=".kml" onchange="openFile()" />
+
+    <button class="copy" onclick="copyToClipboard()">Copy to Clipboard</button>
+    <button class="save" onclick="saveCoordinates()">Save Coordinates</button>
+    <button class="clear" onclick="clearResult()">Clear Result</button>
+</div>
+
+<script>
+    function updateCoordinates() {
+        const coordType = document.getElementById('coord-type').value;
+        const zoneLabel = document.getElementById('zone-label');
+        const zone = document.getElementById('zone');
+        const saveFormat = document.getElementById('save-format');
+
+        if (coordType === 'Geographic') {
+            zone.style.display = 'none';
+            zoneLabel.style.display = 'none';
+        } else if (coordType === 'UTM') {
+            zone.style.display = 'block';
+            zoneLabel.style.display = 'block';
+        }
+    }
+
+    function openFile() {
+        const fileInput = document.getElementById('file-input');
+        const output = document.getElementById('coordinate-output');
+        const file = fileInput.files[0];
+
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(text, "application/xml");
+
+                let coordinates = [];
+                const placemarks = xmlDoc.getElementsByTagName('Placemark');
+                const coordType = document.getElementById('coord-type').value;
+                const zone = document.getElementById('zone').value;
+
+                for (let i = 0; i < placemarks.length; i++) {
+                    const name = placemarks[i].getElementsByTagName('name')[0].textContent;
+                    const coord = placemarks[i].getElementsByTagName('coordinates')[0].textContent.trim();
+                    const [lon, lat] = coord.split(',');
+
+                    if (coordType === 'Geographic') {
+                        coordinates.push(`${name}, ${lat}, ${lon}`);
+                    } else if (coordType === 'UTM') {
+                        const [utmEasting, utmNorthing] = convertToUTM(lat, lon, zone);
+                        coordinates.push(`${name}, ${utmEasting}, ${utmNorthing}`);
+                    }
+                }
+
+                output.value = coordinates.join('\n');
+            };
+
+            reader.readAsText(file);
+        } else {
+            alert('Please select a file.');
+        }
+    }
+
+    function convertToUTM(lat, lon, zone) {
+        const southHemisphere = zone.endsWith('S');
+        const zoneNumber = parseInt(zone.slice(0, -1));
+        const utmProj = `+proj=utm +zone=${zoneNumber} ${southHemisphere ? '+south' : ''} +datum=WGS84`;
+
+        const [utmEasting, utmNorthing] = proj4('EPSG:4326', utmProj, [parseFloat(lon), parseFloat(lat)]);
+        return [utmEasting.toFixed(2), utmNorthing.toFixed(2)];
+    }
+
+    function copyToClipboard() {
+        const output = document.getElementById('coordinate-output');
+        output.select();
+        document.execCommand('copy');
+        alert("Coordinates copied to clipboard!");
+    }
+
+    function saveCoordinates() {
+        const saveFormat = document.getElementById('save-format').value;
+        const coordinates = document.getElementById('coordinate-output').value;
+
+        const blob = new Blob([coordinates], { type: 'text/plain' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `coordinates.${saveFormat === 'csv' ? 'csv' : 'txt'}`;
+        link.click();
+    }
+
+    function clearResult() {
+        document.getElementById('coordinate-output').value = '';
+    }
+</script>
+
+</body>
+</html>
